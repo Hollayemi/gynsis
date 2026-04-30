@@ -62,7 +62,15 @@ app.get('/health', (req, res) => {
     }, 'Server is healthy');
 });
 
+
+
 // import routes
+import authRoutes  from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
+ 
+app.use('/api/v1/auth',  authRoutes);
+app.use('/api/v1/admin', adminRoutes);
+ 
 
 app.use('*', handle404);
 

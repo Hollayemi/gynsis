@@ -4,12 +4,9 @@ import { verifyToken, JwtPayload } from '../helpers/jwt.helper';
 import { UserModel } from '../models';
 import { UserRole } from '../models/types';
 
-// ─── Augment Express Request ──────────────────────────────────────────────────
-
 declare global {
   namespace Express {
     interface Request {
-      /** Attached by `protect` after token verification */
       user?: {
         id: string;
         fullName: string;
@@ -23,33 +20,18 @@ declare global {
 
 // ─── protect ─────────────────────────────────────────────────────────────────
 
-/**
- * Verifies the Bearer access token, loads the user from DB and attaches it
- * to `req.user`. Rejects with 401 if token is missing, invalid, or if the
- * account is deactivated.
- */
 export const protect = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {
     let token: string | undefined;
 
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer ')
-    ) {
+    if (req.headers.authorization?.startsWith('Bearer ')) {
       token = req.headers.authorization.split(' ')[1];
     } else if (req.cookies?.token) {
-      // Legacy fallback – keep for backward compat
       token = req.cookies.token;
     }
 
     if (!token) {
-      return next(
-        new AppError(
-          'You are not logged in. Please log in to continue.',
-          401,
-          'UNAUTHORIZED'
-        )
-      );
+      return next(new AppError('You are not logged in. Please log in to continue.', 401, 'UNAUTHORIZED'));
     }
 
     let decoded: JwtPayload;
@@ -63,29 +45,9 @@ export const protect = asyncHandler(
       return next(new AppError(message, 401, 'UNAUTHORIZED'));
     }
 
-    const user = await UserModel.findById(decoded.id).select(
-      'fullName phone role isActive'
-    );
-
-    if (!user) {
-      return next(
-        new AppError(
-          'The account belonging to this token no longer exists.',
-          401,
-          'UNAUTHORIZED'
-        )
-      );
-    }
-
-    if (!user.isActive) {
-      return next(
-        new AppError(
-          'Your account has been deactivated. Please contact support.',
-          403,
-          'FORBIDDEN'
-        )
-      );
-    }
+    const user = await UserModel.findById(decoded.id).select('fullName phone role isActive');
+    if (!user) return next(new AppError('The account belonging to this token no longer exists.', 401, 'UNAUTHORIZED'));
+    if (!user.isActive) return next(new AppError('Your account has been deactivated. Please contact support.', 403, 'FORBIDDEN'));
 
     req.user = {
       id: user._id!.toString(),
@@ -101,56 +63,44 @@ export const protect = asyncHandler(
 
 // ─── authorizeRoles ───────────────────────────────────────────────────────────
 
-/**
- * Role-based access control guard.
- * Must be used AFTER `protect`.
- *
- * Usage:
- *   router.get('/dashboard', protect, authorizeRoles(UserRole.GOVERNMENT, UserRole.LGA), handler)
- */
-export const authorizeRoles = (...roles: UserRole[]) => {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      return next(new AppError('Not authenticated', 401, 'UNAUTHORIZED'));
-    }
-
+export const authorizeRoles = (...roles: UserRole[]) =>
+  (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) return next(new AppError('Not authenticated', 401, 'UNAUTHORIZED'));
     if (!roles.includes(req.user.role)) {
       return next(
-        new AppError(
-          `Access denied. This route is restricted to: ${roles.join(', ')}`,
-          403,
-          'FORBIDDEN'
-        )
+        new AppError(`Access denied. Restricted to: ${roles.join(', ')}`, 403, 'FORBIDDEN')
       );
     }
-
     next();
   };
-};
 
-// ─── Convenience role guards ──────────────────────────────────────────────────
+// ─── Convenience guards ───────────────────────────────────────────────────────
 
-/** Allow only Government accounts */
-export const governmentOnly = authorizeRoles(UserRole.GOVERNMENT);
+/** Super admin only */
+export const superAdminOnly = authorizeRoles(UserRole.SUPER_ADMIN);
 
-/** Allow Government and LGA accounts */
-export const governmentOrLGA = authorizeRoles(UserRole.GOVERNMENT, UserRole.LGA);
+/** Super admin or Government */
+export const superAdminOrGov = authorizeRoles(UserRole.SUPER_ADMIN, UserRole.GOVERNMENT);
 
-/** Allow Government, LGA, and Union accounts */
-export const managementOnly = authorizeRoles(
+/** Super admin, Government, or LGA */
+export const managementTier = authorizeRoles(UserRole.SUPER_ADMIN, UserRole.GOVERNMENT, UserRole.LGA);
+
+/** Super admin, Government, LGA, or Union — can read downwards */
+export const seniorStaff = authorizeRoles(
+  UserRole.SUPER_ADMIN,
   UserRole.GOVERNMENT,
   UserRole.LGA,
   UserRole.UNION
 );
 
-/** Allow only Union accounts */
+/** Union or Seller */
+export const operationalStaff = authorizeRoles(UserRole.UNION, UserRole.SELLER);
+
+/** Union only */
 export const unionOnly = authorizeRoles(UserRole.UNION);
 
-/** Allow only Ticket Seller accounts */
+/** Seller only */
 export const sellerOnly = authorizeRoles(UserRole.SELLER);
 
-/** Allow only Rider accounts */
+/** Rider only */
 export const riderOnly = authorizeRoles(UserRole.RIDER);
-
-/** Allow Union and Seller (operational staff) */
-export const operationalStaff = authorizeRoles(UserRole.UNION, UserRole.SELLER);

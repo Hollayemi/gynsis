@@ -1,105 +1,37 @@
 import { Router } from 'express';
 import {
-  login,
-  logout,
-  refreshToken,
-  getMe,
-  updatePassword,
-  registerGovernmentHandler,
-  registerLGAHandler,
-  registerUnionHandler,
-  registerSellerHandler,
-  registerRiderHandler,
+  sendOtpHandler,
+  verifyOtpHandler,
+  resendOtpHandler,
+  refreshTokenHandler,
+  logoutHandler,
+  getMeHandler,
 } from '../controllers/auth.controller';
-import { protect, governmentOnly, governmentOrLGA, managementOnly } from '../middleware/auth';
-import {
-  validateLogin,
-  validateGovernmentRegister,
-  validateLGARegister,
-  validateUnionRegister,
-  validateSellerRegister,
-  validateRiderRegister,
-  validateChangePassword,
-} from '../helpers/validators/auth.validator';
+import { protect } from '../middleware/auth';
 
 const router = Router();
 
-// ─── Public routes ────────────────────────────────────────────────────────────
+// ─── Public ───────────────────────────────────────────────────────────────────
 
-router.post('/login', validateLogin, login);
-router.post('/refresh-token', refreshToken);
+/** Step 1: request OTP */
+router.post('/send-otp', sendOtpHandler);
 
-// ─── Registration routes ──────────────────────────────────────────────────────
-// Government: open (first-time seeding) or internally guarded at infra level
-// LGA/Union/Seller: restricted so only higher-tier principals can onboard them
-// Rider: done at the union post — union admins register riders
+/** Step 2: submit OTP → receive access + refresh tokens */
+router.post('/verify-otp', verifyOtpHandler);
 
-/**
- * Government registration
- * Typically called once per state during system setup. In production you may
- * want to restrict this behind an internal API key or remove it entirely after
- * initial seeding.
- */
-router.post(
-  '/register/government',
-  validateGovernmentRegister,
-  registerGovernmentHandler
-);
+/** Resend OTP (60 s cooldown) */
+router.post('/resend-otp', resendOtpHandler);
 
-/**
- * LGA registration
- * Only a Government account can register an LGA.
- */
-router.post(
-  '/register/lga',
-  protect,
-  governmentOnly,
-  validateLGARegister,
-  registerLGAHandler
-);
+/** Issue new access token from httpOnly refresh cookie */
+router.post('/refresh-token', refreshTokenHandler);
 
-/**
- * Union registration
- * Government or LGA accounts can register a union.
- */
-router.post(
-  '/register/union',
-  protect,
-  governmentOrLGA,
-  validateUnionRegister,
-  registerUnionHandler
-);
+// ─── Protected ────────────────────────────────────────────────────────────────
 
-/**
- * Ticket Seller registration
- * Government, LGA, or Union can register a seller (most common: union).
- */
-router.post(
-  '/register/seller',
-  protect,
-  managementOnly,
-  validateSellerRegister,
-  registerSellerHandler
-);
+router.use(protect);
 
-/**
- * Rider registration (done at union post by union admin)
- * Government, LGA, or Union can register a rider.
- */
-router.post(
-  '/register/rider',
-  protect,
-  managementOnly,
-  validateRiderRegister,
-  registerRiderHandler
-);
+router.post('/logout', logoutHandler);
 
-// ─── Protected routes ─────────────────────────────────────────────────────────
-
-router.use(protect); // everything below requires auth
-
-router.post('/logout', logout);
-router.get('/me', getMe);
-router.patch('/change-password', validateChangePassword, updatePassword);
+/** Returns user + role profile */
+router.get('/me', getMeHandler);
 
 export default router;

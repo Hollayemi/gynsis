@@ -1,112 +1,89 @@
-import express, { Request, Response, NextFunction } from 'express';
+import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 
-import connectDB from './src/config/database';
 import {
   errorHandler,
   handle404,
   jsonParseErrorHandler,
   extendResponse,
-} from './src/middleware/error';
+  AppResponse,
+} from './middleware/error';
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-import authRoutes from './src/routes/auth.routes';
+import authRoutes  from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
 
 dotenv.config();
 
-connectDB();
+// ─── DB ───────────────────────────────────────────────────────────────────────
+
+async function connectDB(): Promise<void> {
+  const uri =
+    process.env.NODE_ENV === 'production'
+      ? process.env.MONGODB_URI_PROD!
+      : process.env.MONGODB_URI!;
+  const conn = await mongoose.connect(uri);
+  console.log(`MongoDB connected: ${conn.connection.host} / ${conn.connection.name}`);
+}
+
+connectDB().catch((err) => {
+  console.error('MongoDB connection failed:', err);
+  process.exit(1);
+});
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-// ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 20,
-  message: { error: 'Too many auth attempts. Please try again in 15 minutes.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const globalLimiter = rateLimit({
-  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 10 * 60 * 1000,
-  max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 300,
-  message: { error: 'Too many requests from this IP, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use('/api/', globalLimiter);
-
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    credentials: true,
-  })
-);
-
-// ─── Body parsing ─────────────────────────────────────────────────────────────
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
-
-// ─── Custom response helpers ──────────────────────────────────────────────────
 app.use(jsonParseErrorHandler);
 app.use(extendResponse);
+app.use(process.env.NODE_ENV === 'development' ? morgan('dev') : morgan('combined'));
 
-// ─── Logger ───────────────────────────────────────────────────────────────────
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
-// ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  (res as any).data(
-    {
-      status: 'OK',
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-      uptime: process.uptime(),
-    },
+  (res as AppResponse).data(
+    { status: 'OK', env: process.env.NODE_ENV, uptime: process.uptime() },
     'Server is healthy'
   );
 });
 
-// ─── API routes ───────────────────────────────────────────────────────────────
-app.use('/api/v1/auth', authLimiter, authRoutes);
+app.use('/api/v1/auth',  authRoutes);
+app.use('/api/v1/admin', adminRoutes);
 
-// ─── 404 & global error handler ──────────────────────────────────────────────
+// ─── Error handling ───────────────────────────────────────────────────────────
+
 app.use('*', handle404);
 app.use(errorHandler);
 
-// ─── Bootstrap ────────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`
-    🚌  NURTW Digital Ticketing Server
-    ─────────────────────────────────
-    Environment : ${process.env.NODE_ENV}
-    Port        : ${PORT}
-    Started     : ${new Date().toLocaleTimeString()}
+  ✅  NURTW Server running
+  Env:  ${process.env.NODE_ENV}
+  Port: ${PORT}
+  Time: ${new Date().toLocaleTimeString()}
   `);
 });
 
 process.on('unhandledRejection', (err: Error) => {
-  console.error('UNHANDLED REJECTION! Shutting down…', err.name, err.message);
+  console.log('UNHANDLED REJECTION — shutting down:', err.name, err.message);
   server.close(() => process.exit(1));
 });
 
 process.on('uncaughtException', (err: Error) => {
-  console.error('UNCAUGHT EXCEPTION! Shutting down…', err.name, err.message);
+  console.log('UNCAUGHT EXCEPTION — shutting down:', err.name, err.message);
   process.exit(1);
 });
 

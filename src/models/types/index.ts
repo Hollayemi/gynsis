@@ -1,90 +1,103 @@
-// import { ObjectId } from 'mongodb';
+import { ObjectId } from 'mongoose';
 
-import { ObjectId } from "mongoose";
+// ─── Enums ────────────────────────────────────────────────────────────────────
 
-// Enums
 export enum UserRole {
-  GOVERNMENT = 'government',
-  LGA = 'lga',
-  UNION = 'union',
-  SELLER = 'seller',
-  RIDER = 'rider'
+  SUPER_ADMIN = 'super_admin',
+  GOVERNMENT  = 'government',
+  LGA         = 'lga',
+  UNION       = 'union',
+  SELLER      = 'seller',
+  RIDER       = 'rider',
 }
 
 export enum VehicleType {
-  OKADA = 'okada',
-  TRICYCLE = 'tricycle'
+  OKADA    = 'okada',
+  TRICYCLE = 'tricycle',
 }
 
 export enum ComplianceStatus {
   COMPLIANT = 'compliant',
-  WARNING = 'warning',
-  VIOLATION = 'violation'
+  WARNING   = 'warning',
+  VIOLATION = 'violation',
 }
 
 export enum TransferStatus {
-  NONE = 'none',
-  PENDING = 'pending',
-  CLEARANCE_CHECK = 'clearance_check',
-  APPROVED_BY_UNION_A = 'approved_by_union_a',
-  APPROVED_BY_UNION_B = 'approved_by_union_b',
-  LGA_APPROVED = 'lga_approved',
-  COMPLETED = 'completed',
-  REJECTED = 'rejected'
+  NONE                 = 'none',
+  PENDING              = 'pending',
+  CLEARANCE_CHECK      = 'clearance_check',
+  APPROVED_BY_UNION_A  = 'approved_by_union_a',
+  APPROVED_BY_UNION_B  = 'approved_by_union_b',
+  LGA_APPROVED         = 'lga_approved',
+  COMPLETED            = 'completed',
+  REJECTED             = 'rejected',
 }
 
 export enum PaymentMethod {
-  CASH = 'cash',
-  WALLET = 'wallet',
-  TRANSFER = 'transfer'
+  CASH     = 'cash',
+  WALLET   = 'wallet',
+  TRANSFER = 'transfer',
 }
 
 export enum SyncStatus {
   PENDING_SYNC = 'pending_sync',
-  SYNCED = 'synced'
+  SYNCED       = 'synced',
 }
 
 export enum EntityType {
   UNION = 'union',
-  LGA = 'lga'
+  LGA   = 'lga',
 }
 
-// Base Interface with common fields
+// ─── Base ─────────────────────────────────────────────────────────────────────
+
 export interface BaseModel {
   _id?: ObjectId;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-// Location type for GPS
 export interface GPSLocation {
   type: 'Point';
-  coordinates: [number, number]; // [longitude, latitude]
+  coordinates: [number, number];
 }
 
-// User Interface
+// ─── Interfaces ───────────────────────────────────────────────────────────────
+
 export interface IUser extends BaseModel {
   phone: string;
-  passwordHash: string;
   role: UserRole;
   fullName: string;
   isActive: boolean;
   lastLogin?: Date;
 }
 
-// Government Interface
+export interface IOtp extends BaseModel {
+  phone: string;
+  code: string;
+  expiresAt: Date;
+  used: boolean;
+  attempts: number;
+}
+
+export interface ISuperAdmin extends BaseModel {
+  userId: ObjectId;
+  email?: string;
+}
+
 export interface IGovernment extends BaseModel {
   userId: ObjectId;
   stateName: string;
+  code: string;
   totalTicketsAllocated: number;
   totalRevenueCollected: number;
 }
 
-// LGA Interface
 export interface ILGA extends BaseModel {
   userId: ObjectId;
   govId: ObjectId;
   lgaName: string;
+  code: string;
   ticketQuota: number;
   ticketsSold: number;
   expectedRevenue: number;
@@ -92,11 +105,10 @@ export interface ILGA extends BaseModel {
   complianceRate: number;
 }
 
-// Union Interface
 export interface IUnion extends BaseModel {
   userId: ObjectId;
   lgaId: ObjectId;
-  unionCode: string; // 4 chars e.g., "IKJA"
+  unionCode: string;
   unionName: string;
   govBasePrice: number;
   unionLevy: number;
@@ -108,33 +120,34 @@ export interface IUnion extends BaseModel {
   lastRemittanceDate?: Date;
 }
 
-// Rider Interface
 export interface IRider extends BaseModel {
   userId: ObjectId;
-  riderCode: string; // "IKJA-4582" format
+  riderCode: string;
   unionId: ObjectId;
   originalUnionId: ObjectId;
   vehicleType: VehicleType;
   vehicleNumber: string;
+  vehicleMake?: string;
+  nin?: string;
   complianceStatus: ComplianceStatus;
   lastPaymentDate?: Date;
   outstandingBalance: number;
   transferStatus: TransferStatus;
-  phone: string; // Denormalized for quick lookup
-  fullName: string; // Denormalized for quick lookup
+  phone: string;
+  fullName: string;
 }
 
-// Seller Interface
 export interface ISeller extends BaseModel {
   userId: ObjectId;
   unionId: ObjectId;
   ticketAllocation: number;
   ticketsSoldToday: number;
   totalTicketsSold: number;
+  nin?: string;
+  address?: string;
   lastSyncTime?: Date;
 }
 
-// Ticket Transaction Interface
 export interface ITicketTransaction extends BaseModel {
   riderId: ObjectId;
   sellerId: ObjectId;
@@ -148,28 +161,26 @@ export interface ITicketTransaction extends BaseModel {
   gpsLocation?: GPSLocation;
   receiptNumber: string;
   syncStatus: SyncStatus;
-  riderCode: string; // Denormalized for quick lookup
-  unionCode: string; // Denormalized for quick lookup
+  riderCode: string;
+  unionCode: string;
 }
 
-// Transfer Request Interface
 export interface ITransferRequest extends BaseModel {
   riderId: ObjectId;
   fromUnionId: ObjectId;
   toUnionId: ObjectId;
   lgaId: ObjectId;
   status: TransferStatus;
-  clearanceCertificate?: string; // URL to PDF
+  clearanceCertificate?: string;
   requestDate: Date;
   completionDate?: Date;
   gracePeriodEnd?: Date;
   rejectionReason?: string;
-  riderCode: string; // Denormalized for quick lookup
-  fromUnionName: string; // Denormalized
-  toUnionName: string; // Denormalized
+  riderCode: string;
+  fromUnionName: string;
+  toUnionName: string;
 }
 
-// Revenue Remittance Interface
 export interface IRevenueRemittance extends BaseModel {
   fromEntityType: EntityType;
   fromEntityId: ObjectId;
@@ -179,6 +190,6 @@ export interface IRevenueRemittance extends BaseModel {
   paymentReference: string;
   remittanceDate: Date;
   ticketTransactionsIncluded: ObjectId[];
-  fromEntityName: string; // Denormalized
-  toEntityName: string; // Denormalized
+  fromEntityName: string;
+  toEntityName: string;
 }

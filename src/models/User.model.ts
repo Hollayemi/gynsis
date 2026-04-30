@@ -10,10 +10,6 @@ const UserSchema = new Schema<IUser>(
       index: true,
       trim: true
     },
-    passwordHash: {
-      type: String,
-      required: [true, 'Password hash is required']
-    },
     role: {
       type: String,
       enum: Object.values(UserRole),

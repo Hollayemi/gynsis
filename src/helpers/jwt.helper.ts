@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { Response } from 'express';
 import { Types } from 'mongoose';
-import { UserRole } from '../../models/types';
+import { UserRole } from '../models/types';
 
 export interface JwtPayload {
   id: string;
